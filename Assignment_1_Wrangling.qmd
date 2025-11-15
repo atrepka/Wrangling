@@ -1,0 +1,156 @@
+---
+title: "Assignment 1: Data Wrangling Memo"
+author: "Alex Trepka"
+format: 
+  pdf:
+    documentclass: article
+    fontfamily: Inter
+    fontsize: 11pt
+    margin-left: 1in
+    margin-right: 1in
+    margin-top: 1in
+    margin-bottom: 1in
+editor: visual
+---
+
+# Assignment 1: The Research "Mise en Place"
+
+## Conceptual Focus
+
+This assignment covers **Chapter 12: Data Wrangling**. As your slides note, this is the "mise en place" of research. Raw client data is messy. Our "Garbage in, garbage out" motto means we must create a clean, reliable, and reproducible workflow *before* any analysis can begin. Your R script is your "precise, shareable, and repeatable recipe" that ensures your work is transparent and accurate.
+
+------------------------------------------------------------------------
+
+# Data Prep Memo
+
+**To:** Alex Chen (Director of Insights)
+
+**From:** Alex Trepka (Director of R Studio Projects)
+
+**Subject:** Data Prep Memo for 2025 Digital Landscape Brief
+
+Over the course of the 7 steps below, we will be take the source spreadsheet (ATP_W144_excerpt.csv) and clean up the data a bit. First, we will import the raw data and transform multiple data columns and their respective totals into new data columns that summarize info we're looking for.
+
+By the end of this week, we will be defining our new variables (`party_simple`, `platform_count`, `fb_purpose_score`). party_simple condenses a number of responses in terms of political affiliation into numerical data and then label said data into Democrat, Republican, or Independent/ Other. platform_count will add up the various forms of social media platforms that individuals use. The party_simple info will also come into account when showing how many social media platforms the different political parties use. fb_purpose will be focusing on how or why respondents use their Facebook account for.
+
+\newpage
+
+# Appendix: R Code and Commentary
+
+This appendix contains all R code used to import, clean, and transform the raw `ATP_W144_excerpt.csv` file into the analysis-ready `w144_wrangled.RData` file.
+
+## 1. Setup
+
+The following chunk is loading the tidyverse in our project. The tidyverse is a collection of R packages to make data tasks easier. These packages enable use to clean, manipulate, and eventually visualize our data.
+
+```{r}
+#| label: "chunk-setup"
+#| echo: true
+#| message: false
+#| warning: false
+
+library(tidyverse)
+```
+
+## 2. Importing
+
+In this step, we're loading the actual .csv containing all of the data we'll be using for the other steps in this Assignment I's process. The .csv came with the assignment in the starting-files folder. RStudio recognizes the exact name as part of our working directory and loads the .csv data we need.
+
+```{r}
+#| label: "chunk-import"
+#| echo: true
+
+# Use read_csv() to load the dataset
+w144_raw <- read_csv("ATP_W144_excerpt.csv")
+```
+
+## 3. Transforming: Binary Platform Use
+
+We are working in some conditional transformations in our data, specifically the case_when() or if_else() functions. We want to clean or recode certain values in our dataset. Since we have a variable that contains some kind of date or code (like 1/2/99), we want to standardize it into a more usable form. Changing 1/2/99 to 1/0 is a part of a cleaning process.\
+**`case_when()`**: This is a function that allows us to apply multiple conditions to a variable and assign a value based on those conditions.\
+`ifelse()` function is more strict about the data types. It returns the same type of output as the input and requires both the `true` and `false` conditions to be the same type.
+
+```{r}
+#| label: "chunk-transform-binary"
+#| echo: true
+
+w144_wrangled <- w144_raw %>%
+  mutate(
+    # Hint: Use if_else() or case_when(). The variable for Facebook is smuse_a_w144.
+    # The codebook shows 1=Yes, 2=No, 99=Refused. We want 1 for Yes and 0 for No/Refused.
+    uses_facebook = if_else(smuse_a_w144 == 1, 1, 0),
+    uses_instagram = if_else(smuse_c_w144 == 1, 1, 0),
+    uses_tiktok = if_else(smuse_d_w144 == 1, 1, 0),
+    uses_x = if_else(smuse_i_w144 == 1, 1, 0)
+  )
+```
+
+## 4. Transforming: Composite Scale (platform_count)
+
+Binary variables (or TRUE/FALSE statements) in R are essentially about combining several binary conditions into a single continuous variable that represents the combined information from all the binary variables. When I add these variables, R treats TRUE as 1 and FALSE as 0. Now, we can count how many conditions are true or how many platforms are present.
+
+```{r}
+#| label: "chunk-transform-platform-count"
+#| echo: true
+
+w144_wrangled <- w144_wrangled %>%
+     mutate(
+          platform_count = (uses_facebook == "Yes") +
+               (uses_x == "Yes") +
+               (uses_instagram == "Yes") +
+               (uses_tiktok == "Yes")
+     ) 
+```
+
+## f5. Transforming: Categorical (party_simple)
+
+Combining the variables f_party and f_partyln and using a case_when() statement helps us transform categorical data, especially when two or more variables represent similar or related information. In the end, we want to consolidate them into a single, more useful variable.
+
+We want to merge any different ways of referring to the same party (e.g., "Democratic Party" and "Democrat") into a single category, so that analysis is more consistent and manageable. The variables might contain complementary information and we want to combine them into a single variable that better captures the party affiliation in a standardized way.
+
+The case_when() function is a part of the dplyr package. It is used to view multiple conditional transformations. It allows us to apply complex transformations to categorical data because of certain conditions.
+
+```{r}
+#| label: "chunk-transform-party"
+#| echo: true
+
+w144_wrangled <- w144_wrangled %>%
+     mutate(
+          party_simple = case_when(
+               f_party_final == 1 ~ "Republican",
+               f_party_final == 2 ~ "Democrat",
+               TRUE ~ "Independent/Other"
+          ) %>%
+               factor(levels = c("Republican", "Democrat", "Independent/Other"))
+     )
+```
+
+## 6. Transforming: Index Score (fb_purpose_score)
+
+We are creating an index based on multiple, categorical variables, then adding them together to make a composite score. Since we have multiple binary variables representing whether a certain condition or feature is present. Each condition is represented as `TRUE` (1) or `FALSE` (0). By using logical tests and adding their results, wecalculate the total count of present conditions, making it easy to create composite scores for the categorical data.
+
+```{r}
+#| label: "chunk-transform-fb-score"
+#| echo: true
+
+w144_wrangled <- w144_wrangled %>%
+     
+     mutate(
+          fb_uses_count = rowSums(
+               across(starts_with("fbwhysp_")),
+               na.rm = TRUE
+          )
+     )
+```
+
+## 7. Exporting
+
+We are saving this project as RData, instead of saving the .CSV so that the original raw data is untouched. Our manipulated data will still live in w144_wrangled and we can return to it later if needed.
+
+```{r}
+#| label: "chunk-export"
+#| echo: true
+
+# Save the final wrangled data
+save(w144_wrangled, file = "w144_wrangled.RData")
+```
